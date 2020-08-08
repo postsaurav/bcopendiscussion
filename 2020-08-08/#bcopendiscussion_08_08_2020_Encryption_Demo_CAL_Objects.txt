@@ -1,0 +1,312 @@
+OBJECT Table 50000 Test Encryption
+{
+  OBJECT-PROPERTIES
+  {
+    Date=08/08/20;
+    Time=[ 9:44:44 PM];
+    Modified=Yes;
+    Version List=;
+  }
+  PROPERTIES
+  {
+  }
+  FIELDS
+  {
+    { 1   ;   ;Code                ;Code20        ;DataClassification=ToBeClassified }
+    { 2   ;   ;Sensitive Info      ;Text1024      ;OnValidate=BEGIN
+                                                                "Sensitive Info" := EncryptData("Sensitive Info");
+                                                              END;
+
+                                                   DataClassification=ToBeClassified }
+    { 8000;   ;Id                  ;GUID          ;DataClassification=ToBeClassified;
+                                                   CaptionML=[ENU=Id;
+                                                              ESM=Id.;
+                                                              FRC="Code ";
+                                                              ENC=Id];
+                                                   Editable=No }
+  }
+  KEYS
+  {
+    {    ;Code                                    ;Clustered=Yes }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+
+    LOCAL PROCEDURE EncryptData@1240060000(SourceData@1240060000 : Text[1024]) SensitiveData : Text[1024];
+    VAR
+      EncryptionManagement@1240060001 : Codeunit 1266;
+    BEGIN
+      IF EncryptionManagement.IsEncryptionEnabled THEN
+        SensitiveData := EncryptionManagement.Encrypt(SourceData)
+      ELSE
+        SensitiveData := SourceData;
+    END;
+
+    PROCEDURE DecryptData@1240060001(SourceData@1240060000 : Text[1024]) : Text;
+    VAR
+      EncryptionManagement@1240060001 : Codeunit 1266;
+    BEGIN
+      IF EncryptionManagement.IsEncryptionEnabled THEN
+        EXIT(EncryptionManagement.Decrypt(SourceData));
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Codeunit 50000 Graph Mgt - Test Encryption
+{
+  OBJECT-PROPERTIES
+  {
+    Date=08/05/20;
+    Time=[ 2:55:19 PM];
+    Modified=Yes;
+    Version List=;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+
+    [External]
+    PROCEDURE UpdateIntegrationRecords@11(OnlyRecordWithoutId@1000 : Boolean);
+    VAR
+      DummyTestEncryption@1002 : Record 50000;
+      GraphMgtGeneralTools@1001 : Codeunit 5465;
+      TestEncryptionRecordRef@1019 : RecordRef;
+    BEGIN
+      TestEncryptionRecordRef.OPEN(DATABASE::"Test Encryption");
+      GraphMgtGeneralTools.UpdateIntegrationRecords(TestEncryptionRecordRef,DummyTestEncryption.FIELDNO(Id),TRUE);
+    END;
+
+    [EventSubscriber(Codeunit,5465,ApiSetup)]
+    LOCAL PROCEDURE HandleApiSetup@16();
+    BEGIN
+      UpdateIntegrationRecords(FALSE);
+      UpdateIds;
+    END;
+
+    [External]
+    PROCEDURE UpdateIds@6();
+    VAR
+      TestEncryption@1000 : Record 50000;
+    BEGIN
+      IF NOT TestEncryption.FINDSET(TRUE,FALSE) THEN
+        EXIT;
+
+      REPEAT
+        TestEncryption.MODIFY(FALSE);
+      UNTIL TestEncryption.NEXT = 0;
+    END;
+
+    [EventSubscriber(Codeunit,5150,OnIsIntegrationRecord)]
+    LOCAL PROCEDURE AddIntegrartionRecord@1240060000(TableID@1240060000 : Integer;VAR isIntegrationRecord@1240060001 : Boolean);
+    BEGIN
+      IF TableID = DATABASE::"Test Encryption" THEN
+        isIntegrationRecord := TRUE;
+    END;
+
+    [EventSubscriber(Codeunit,5150,OnGetPredefinedIdValue)]
+    LOCAL PROCEDURE AddGetPredefinedID@1240060001(VAR Id@1240060000 : GUID;VAR RecRef@1240060001 : RecordRef;VAR Handled@1240060002 : Boolean);
+    VAR
+      GraphMgtGeneralTools@1240060003 : Codeunit 5465;
+      DummyTestEncryption@1240060004 : Record 50000;
+    BEGIN
+      IF RecRef.NUMBER = DATABASE::"Test Encryption" THEN
+        GraphMgtGeneralTools.HandleGetPredefinedIdValue(Id,RecRef,Handled,DATABASE::"Test Encryption",DummyTestEncryption.FIELDNO(Id));
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Page 50000 TestEncryption Entity
+{
+  OBJECT-PROPERTIES
+  {
+    Date=08/05/20;
+    Time=[ 1:34:37 PM];
+    Modified=Yes;
+    Version List=;
+  }
+  PROPERTIES
+  {
+    CaptionML=[@@@={Locked};
+               ENU=testencryption;
+               ESM=testencryption;
+               FRC=testencryption;
+               ENC=testencryption];
+    SourceTable=Table50000;
+    DelayedInsert=Yes;
+    PageType=API;
+    EntitySetName=testencryptions;
+    EntityName=testencryption;
+    OnInsertRecord=VAR
+                     TestEncryption@1002 : Record 50000;
+                     GraphMgtGeneralTools@1001 : Codeunit 5465;
+                     RecRef@1000 : RecordRef;
+                   BEGIN
+                     TestEncryption.SETRANGE(Code,Code);
+                     IF NOT TestEncryption.ISEMPTY THEN
+                       INSERT;
+
+                     INSERT(TRUE);
+
+                     RecRef.GETTABLE(Rec);
+                     GraphMgtGeneralTools.ProcessNewRecordFromAPI(RecRef,TempFieldSet,CURRENTDATETIME);
+                     RecRef.SETTABLE(Rec);
+
+                     MODIFY(TRUE);
+                     EXIT(FALSE);
+                   END;
+
+    OnModifyRecord=VAR
+                     TestEncryption@1001 : Record 50000;
+                     GraphMgtGeneralTools@1000 : Codeunit 5465;
+                   BEGIN
+                     IF xRec.Id <> Id THEN
+                       GraphMgtGeneralTools.ErrorIdImmutable;
+                     TestEncryption.SETRANGE(Id,Id);
+                     TestEncryption.FINDFIRST;
+
+                     IF Code = TestEncryption.Code THEN
+                       MODIFY(TRUE)
+                     ELSE BEGIN
+                       TestEncryption.TRANSFERFIELDS(Rec,FALSE);
+                       TestEncryption.RENAME(Code);
+                       TRANSFERFIELDS(TestEncryption);
+                     END;
+                   END;
+
+    ODataKeyFields=Id;
+  }
+  CONTROLS
+  {
+    { 1   ;0   ;Container ;
+                ContainerType=ContentArea }
+
+    { 2   ;1   ;Group     ;
+                Name=Group;
+                GroupType=Repeater }
+
+    { 3   ;2   ;Field     ;
+                Name=id;
+                CaptionML=[@@@={Locked};
+                           ENU=Id;
+                           ESM=Id;
+                           FRC=Id;
+                           ENC=Id];
+                ApplicationArea=#All;
+                SourceExpr=Id;
+                Editable=FALSE }
+
+    { 4   ;2   ;Field     ;
+                Name=code;
+                CaptionML=[@@@={Locked};
+                           ENU=Code;
+                           ESM=Code;
+                           FRC=Code;
+                           ENC=Code];
+                ApplicationArea=#All;
+                SourceExpr=Code;
+                OnValidate=BEGIN
+                             RegisterFieldSet(FIELDNO(Code));
+                           END;
+                            }
+
+    { 5   ;2   ;Field     ;
+                Name=sensitiveinfo;
+                CaptionML=[@@@={Locked};
+                           ENU=sensitiveinfo;
+                           ESM=Description;
+                           FRC=Description;
+                           ENC=Description];
+                ApplicationArea=#All;
+                SourceExpr="Sensitive Info";
+                OnValidate=BEGIN
+                             RegisterFieldSet(FIELDNO("Sensitive Info"));
+                           END;
+                            }
+
+  }
+  CODE
+  {
+    VAR
+      TempFieldSet@1000 : TEMPORARY Record 2000000041;
+
+    LOCAL PROCEDURE RegisterFieldSet@11(FieldNo@1000 : Integer);
+    BEGIN
+      IF TempFieldSet.GET(DATABASE::"Test Encryption",FieldNo) THEN
+        EXIT;
+
+      TempFieldSet.INIT;
+      TempFieldSet.TableNo := DATABASE::"Test Encryption";
+      TempFieldSet.VALIDATE("No.",FieldNo);
+      TempFieldSet.INSERT(TRUE);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Page 50001 Encryption 1
+{
+  OBJECT-PROPERTIES
+  {
+    Date=08/08/20;
+    Time=[ 9:45:44 PM];
+    Modified=Yes;
+    Version List=;
+  }
+  PROPERTIES
+  {
+    SourceTable=Table50000;
+    PageType=List;
+    ActionList=ACTIONS
+    {
+      { 1240060004;  ;ActionContainer;
+                      CaptionML=ENU=Actions;
+                      ActionContainerType=NewDocumentItems }
+      { 1240060005;1 ;Action    ;
+                      Name=ShowActualValue;
+                      CaptionML=ENU=Show Actual Value;
+                      OnAction=BEGIN
+                                 MESSAGE('%1',Rec.DecryptData(Rec."Sensitive Info"));
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1240060000;0;Container;
+                ContainerType=ContentArea }
+
+    { 1240060001;1;Group  ;
+                Name=Group;
+                GroupType=Repeater }
+
+    { 1240060002;2;Field  ;
+                SourceExpr=Code }
+
+    { 1240060003;2;Field  ;
+                SourceExpr="Sensitive Info" }
+
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+
